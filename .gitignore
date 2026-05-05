@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Node / local environment
+node_modules/
+.env
+.env.*
+
+# Local runtime data
+tmp/
+*.log
+
+# Local-only material libraries
+data/qq-stickers/*
+!data/qq-stickers/.gitkeep
