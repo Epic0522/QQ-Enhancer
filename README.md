@@ -31,7 +31,7 @@ The main hub can start without this package. If QQ Enhancer is absent or disable
 | :--- | :--- |
 | Proactive scoring / 主动发言评分 | Uses deployer-defined regular expressions, interest scores, and cooldowns.<br>基于部署者自定义正则、兴趣分数和冷却时间判断是否主动插话。 |
 | QQ image handling / QQ 图片处理 | Extracts OneBot image segments, materializes them locally, and prepares model image inputs.<br>解析 OneBot 图片段，下载或物化为本地文件，并准备给模型使用。 |
-| Multi-bubble replies / 多气泡回复 | Splits group replies into shorter QQ-friendly bubbles.<br>把群聊回复拆成适合 QQ 发送的短气泡。 |
+| Multi-bubble replies / 多气泡回复 | Splits group replies into shorter QQ-friendly bubbles and merges overflow instead of silently truncating the tail.<br>把群聊回复拆成适合 QQ 发送的短气泡，并在超过气泡上限时合并尾部内容，而不是静默截断。 |
 | Local image materials / 本地图片素材 | Supports `[[qq_sticker:name]]` markers for local material sending.<br>通过 `[[qq_sticker:name]]` 标记发送本地素材。 |
 | Custom sharp style / 自定义锐评风格 | Ships with no baked-in private style; deployers fill public rules in source comments.<br>本仓库默认不内置私有风格；部署者在源码注释位置填写公开规则。 |
 
@@ -216,5 +216,4 @@ Or disable it in main hub settings:
 ```
 
 ---
-
 

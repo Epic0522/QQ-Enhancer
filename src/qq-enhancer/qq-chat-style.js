@@ -3,7 +3,7 @@ import {
   buildCustomRoastInstructions,
   customRoastInterestPattern,
   customSharpRoastPattern
-} from "./qq-roast-style.js";
+} from "./qq-roast-persona.js";
 
 const serviceRequestPattern = /(帮我|请问|怎么|如何|为什么|能不能|可以吗|求|查一下|搜一下|写|做|修|装|配置|教程|解释|分析|总结|发给我|告诉我)/i;
 const lowValuePattern = /^(\?|？|。|\.|,|，|哈+|啊+|哦+|嗯+|1|6|66|666|草|艹|笑死|哈哈哈*)$/i;
@@ -159,10 +159,9 @@ export function buildQqReplyWorkspaceStyleInstructions() {
 
 export function buildQqSendPlan(event, reply) {
   const maxBubbles = getMaxQqBubbles(event, reply);
-  const bubbles = splitReplyIntoBubbles(event, reply)
+  const bubbles = mergeOverflowBubbles(splitReplyIntoBubbles(event, reply)
     .flatMap((bubble) => splitLongBubble(event, normalizeQqBubblePunctuation(event, bubble)))
-    .filter(Boolean)
-    .slice(0, event.type === "private_message" ? 1 : maxBubbles);
+    .filter(Boolean), event.type === "private_message" ? 1 : maxBubbles);
   return {
     bubbles,
     flattened: bubbles.join("\n")
@@ -310,39 +309,32 @@ function splitLongBubble(event, bubble) {
   if (event.type === "private_message") return [bubble.slice(0, 900)];
   if (isQqMediaMarker(bubble)) return [bubble];
 
-  const actionMatch = bubble.match(/^(（[^）]{1,18}）)(.+)$/);
-  if (actionMatch && isSharpRoastBubble(actionMatch[2])) {
-    return splitLongBubble(event, actionMatch[2].trim());
-  }
-  if (actionMatch && !isSeriousQqContent(event, bubble)) {
-    return [
-      actionMatch[1],
-      ...splitLongBubble(event, actionMatch[2].trim())
-    ];
-  }
-
   const maxLength = isSeriousQqContent(event, bubble) ? 90 : 18;
   if ([...bubble].length <= maxLength) return [bubble];
 
-  const pieces = bubble
-    .split(/(?<=[？?!！])\s*|\s+/)
-    .map((part) => part.trim())
+  const pieces = String(bubble || "")
+    .replace(/(?<=[。！？?!；;])/g, "\n")
+    .split(/\n+/)
+    .map((part) => collapseWhitespace(part))
     .filter(Boolean);
   if (pieces.length <= 1) return chunkByLength(bubble, maxLength);
 
   const bubbles = [];
   let current = "";
   for (const piece of pieces) {
-    const candidate = current ? `${current} ${piece}` : piece;
-    if ([...candidate].length <= maxLength) {
-      current = candidate;
-      continue;
+    const chunked = [...piece].length > maxLength ? chunkByLength(piece, maxLength) : [piece];
+    for (const chunk of chunked) {
+      const candidate = current ? `${current} ${chunk}` : chunk;
+      if ([...candidate].length <= maxLength) {
+        current = candidate;
+        continue;
+      }
+      if (current) bubbles.push(current);
+      current = chunk;
     }
-    if (current) bubbles.push(current);
-    current = piece;
   }
   if (current) bubbles.push(current);
-  return bubbles.flatMap((part) => chunkByLength(part, maxLength));
+  return bubbles;
 }
 
 function splitMediaMarkersFromText(text) {
@@ -366,11 +358,6 @@ function isQqMediaMarker(text) {
   return /^\[\[(qq_image|qq_sticker):[^\]\n]+\]\]$/.test(String(text || "").trim());
 }
 
-function isSharpRoastBubble(text) {
-  const normalized = String(text || "").trim();
-  return normalized.length <= 40 && (sharpReplyPattern.test(normalized) || customSharpRoastPattern.test(normalized));
-}
-
 function trimTerminalPeriod(text) {
   return String(text || "")
     .replace(/[。.\s]+$/g, "")
@@ -379,13 +366,19 @@ function trimTerminalPeriod(text) {
 
 function isSeriousQqContent(event, text) {
   const source = `${event?.text || ""} ${text || ""}`;
-  return /(```|`[^`]+`|https?:\/\/|\/[A-Za-z0-9_-]+|代码|报错|错误|配置|安装|步骤|教程|解释|原因|怎么|如何|为什么|总结|分析|模型|token|API|api|node|npm|python|swift|xcode|git|端口|日志|文件|路径|游戏|攻略|卡牌|角色|装备|关卡|通关|最好用|推荐|排行|排名|TOP|top|三个|3个|几个|东方|虹龙洞|GameCube|Steam|switch|Switch|galgame|手游)/i.test(source);
+  const normalized = String(source || "");
+  const hasUrlOrCode = /```|`[^`]+`|https?:\/\/|\/[A-Za-z0-9_-]+/.test(normalized);
+  const hasQuestionShape = /[?？]|(怎么|如何|为什么|是不是|有没有|能不能|可以吗)/.test(normalized);
+  const hasStructuredFacts = /\d{1,4}([月日号点代档nmkKMGTP%]|年)|[A-Za-z]{2,}\s?[A-Za-z0-9+._-]{1,}|[A-Za-z0-9+._-]{3,}\s[A-Za-z0-9+._-]{2,}/.test(normalized);
+  const hasClauseDensity = (normalized.match(/[，,；;：:\-]/g) || []).length >= 2;
+  const looksExplanatory = [...normalized].length >= 28 && (hasQuestionShape || hasStructuredFacts || hasClauseDensity);
+  return hasUrlOrCode || looksExplanatory;
 }
 
 function getMaxQqBubbles(event, reply) {
   if (event.type === "private_message") return 1;
   const source = `${event?.text || ""} ${reply || ""}`;
-  if (isSeriousQqContent(event, reply)) return /(\b3\b|3个|三个|前三|top\s*3|TOP\s*3)/i.test(source) ? 6 : 5;
+  if (isSeriousQqContent(event, reply)) return /(\b3\b|3个|三个|前三|top\s*3|TOP\s*3)/i.test(source) ? 7 : 6;
   return 4;
 }
 
@@ -410,14 +403,20 @@ function clampBubbles(parts, maxBubbles = 4) {
       bubbles.push(part);
     }
   }
-  return bubbles.slice(0, maxBubbles).map((bubble) => bubble.slice(0, 360));
+  return mergeOverflowBubbles(bubbles, maxBubbles).map((bubble) => bubble.slice(0, 360));
 }
 
 function clampExplicitBubbles(parts, maxBubbles = 4) {
-  return parts
-    .filter(Boolean)
-    .slice(0, maxBubbles)
-    .map((bubble) => bubble.slice(0, 360));
+  return mergeOverflowBubbles(parts.filter(Boolean), maxBubbles).map((bubble) => bubble.slice(0, 360));
+}
+
+function mergeOverflowBubbles(parts, maxBubbles) {
+  const bubbles = [...(parts || [])].filter(Boolean);
+  if (bubbles.length <= maxBubbles) return bubbles;
+  const kept = bubbles.slice(0, maxBubbles - 1);
+  const overflow = bubbles.slice(maxBubbles - 1).join(" ");
+  kept.push(collapseWhitespace(overflow));
+  return kept;
 }
 
 function collapseWhitespace(text) {
